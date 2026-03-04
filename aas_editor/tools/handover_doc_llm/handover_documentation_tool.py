@@ -219,6 +219,7 @@ class HandoverDocumentationToolDialog(QDialog):
         self.providerLineEdit = QComboBox(self, toolTip="LLM Provider",
                                           currentIndexChanged=self.provider_changed)
         self.providerLineEdit.addItems([k for k in LLM_PROVIDERS.keys()])
+        self.provider_changed()
 
         self.model_info_label = QLabel(self)
         self.model_info_label.setPixmap(INFO_ICON.pixmap(24, 24))
@@ -362,7 +363,23 @@ class HandoverDocumentationToolDialog(QDialog):
         self.cleanup_thread()
 
     def provider_changed(self):
-        self.modelLineEdit.setPlaceholderText(LLM_PROVIDERS[self.providerLineEdit.currentText()]["default_model"])
+        provider = self.providerLineEdit.currentText()
+        provider_settings = LLM_PROVIDERS[provider]
+        self.modelLineEdit.setPlaceholderText(provider_settings["default_model"])
+
+        requires_api_key = provider_settings.get("requires_api_key", True)
+        self.apiKeyLineEdit.clear()
+
+        if requires_api_key:
+            self.apiKeyLineEdit.setPlaceholderText("Enter API Key here")
+            self.apiKeyLineEdit.setToolTip("API Key for LLM service")
+            self.apiKeyLineEdit.setEchoMode(QLineEdit.EchoMode.Password)
+        else:
+            self.apiKeyLineEdit.setPlaceholderText("Optional: Ollama URL (default: http://localhost:11434)")
+            self.apiKeyLineEdit.setToolTip(
+                "Optional: provide a custom Ollama base URL. Leave empty to use http://localhost:11434"
+            )
+            self.apiKeyLineEdit.setEchoMode(QLineEdit.EchoMode.Normal)
 
     def closeEvent(self, event):
         if self.processingThread and self.processingThread.isRunning():

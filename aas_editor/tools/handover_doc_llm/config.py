@@ -3,6 +3,7 @@ from langchain_groq import ChatGroq
 from langchain_google_vertexai import ChatVertexAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_mistralai import ChatMistralAI
+from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 TOOL_DESCRIPTION = \
@@ -41,12 +42,20 @@ LLM_PROVIDERS = {
         "default_model": "mistral-large-latest",
         "init": lambda model, key: ChatMistralAI(model=model, api_key=key),
     },
+    "Ollama (local)": {
+        "default_model": "llama3.1:8b",
+        "requires_api_key": False,
+        "init": lambda model, key: ChatOllama(model=model, base_url=key or "http://localhost:11434"),
+    },
 }
 
 EMBEDDING_PROVIDERS = {
     "default": lambda key: HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2"),
     "huggingface": lambda key: HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2"),
     "OpenAI": lambda key: OpenAIEmbeddings(api_key=key),
+    "Ollama (local)": lambda key: OllamaEmbeddings(
+        model="nomic-embed-text", base_url=key or "http://localhost:11434"
+    ),
 }
 
 PROMPT = """

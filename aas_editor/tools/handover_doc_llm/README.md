@@ -1,36 +1,34 @@
 # Handover Documentation tool
 
-The Handover Documentation Tool is a extension of the AAS Manager that allows users to generate a Handover Documentation from a given PDF file with the usage of LLMs.
+The Handover Documentation Tool is an extension of AAS Manager that generates a Handover Documentation Submodel from a PDF file using LLMs.
 
-Usage:
-- Select the "Handover Documentation tool" from the "Tools" menu.
-- In the opened dialog, select the LLM provider and model you want to use.
-- Provide your API key for the selected LLM provider.
-- Drag and drop or select the PDF file you want to use.
-- Check and adjust the extracted data if necessary.
-- The Handover Documentation will be added to the current AAS file.
+## Usage
+- Select **Tools → Handover Documentation tool**.
+- Select the LLM provider and model.
+- Provide credentials:
+  - Cloud providers: enter the API key.
+  - **Ollama (local)**: API key is not required; optionally enter a custom Ollama base URL (default: `http://localhost:11434`).
+- Drag-and-drop or choose the PDF file.
+- Check and adjust extracted data if needed.
+- Finish to add the generated Handover Documentation Submodel to the current AAS file.
 
-The tool uses the [LangChain](https://python.langchain.com/docs/) library for the interaction with LLMs.
-It splits the PDF into smaller chunks and uses vector stores to store the chunks.
-After that, it uses a RAG chain to query the LLM with the data.
-
-
-The tool currently supports the following LLM providers:
+## Supported LLM providers
 - OpenAI
 - Anthropic
 - Google Vertex
 - Groq
 - Mistral AI
+- Ollama (local)
 
-Disclaimer: The Handover Documentation tool relies on Large Language Models for information extraction. LLMs may produce incomplete, inaccurate, or inconsistent results. Always verify the extracted documentation before use in production or compliance-relevant contexts.
+## Local LLM setup (Ollama)
+1. Install and run [Ollama](https://ollama.com/).
+2. Pull a chat model, for example:
+   - `ollama pull llama3.1:8b`
+3. Pull the embedding model used for RAG:
+   - `ollama pull nomic-embed-text`
+4. In the tool, choose **Ollama (local)** and set the model name (for example `llama3.1:8b`).
+5. Leave the API key field empty to use `http://localhost:11434`, or provide a custom Ollama URL.
 
+The tool uses [LangChain](https://python.langchain.com/docs/) for LLM interaction. It splits PDFs into chunks, stores embeddings in a vector store, and performs RAG querying for larger documents.
 
-
-The Handover Documentation Tool is a extension of the AAS Manager that allows users to generate a Handover Documentation Submodel from a given PDF file with the usage of LLMs.
-
-Usage:
-- Select the LLM provider and model you want to use.
-- Provide your API key for the selected LLM provider.
-- Drag and drop or select the PDF file you want to use.
-- Check and adjust the extracted data if necessary.
-- The Handover Documentation Submodel will be added to the current AAS file or a new file.
+> Disclaimer: The Handover Documentation tool relies on LLMs for information extraction. LLM output can be incomplete or inaccurate. Always review the generated documentation before production or compliance use.
