@@ -14,7 +14,7 @@ on:
 jobs:
   create_release:
     name: Create Release
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    if: github.event_name == 'push' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
@@ -108,8 +108,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0
 
-      - name: Install CPU-only torch (Ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install CPU-only torch
         run: pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install dependencies
