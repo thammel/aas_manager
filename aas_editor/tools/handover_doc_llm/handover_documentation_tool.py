@@ -71,8 +71,10 @@ class PdfProcessingThread(QThread):
             provider = "HuggingFace"
         return EMBEDDING_PROVIDERS[provider]["init"](api_key, model)
 
-    def init_llm(self, provider: str, chat_model: str, api_key: str):
+    def init_llm(self, provider: str, chat_model: str, api_key: str, schema: dict = None):
         if provider in LLM_PROVIDERS:
+            if provider == "Ollama" and schema is not None:
+                return LLM_PROVIDERS[provider]["init"](chat_model, api_key, schema=schema)
             return LLM_PROVIDERS[provider]["init"](chat_model, api_key)
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
@@ -157,18 +159,16 @@ class PdfProcessingThread(QThread):
                 retriever = SimpleRetriever(docs=docs)
 
             # 4. Chain Execution
-            llm = self.init_llm(self.llm_provider, self.llm_model, self.api_key)
+            schema = json.loads(RESPONSE_SCHEMA)
+            llm = self.init_llm(self.llm_provider, self.llm_model, self.api_key, schema=schema)
             prompt = ChatPromptTemplate.from_template(PROMPT)
             document_chain = create_stuff_documents_chain(llm, prompt)
             docs_for_context = retriever.invoke("")
 
-            # Using a generic input if specific query isn't provided
             llm_response = document_chain.invoke({"input": "", "context": docs_for_context})
             answer = llm_response if isinstance(llm_response, str) else llm_response.get('answer', '')
 
             # 5. JSON Validation
-            schema = json.loads(RESPONSE_SCHEMA)
-
             max_fix_attempts = 2
             last_error = None
 
