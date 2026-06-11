@@ -9,6 +9,7 @@
 #  A copy of the GNU General Public License is available at http://www.gnu.org/licenses/
 import json
 import webbrowser
+from pathlib import Path
 
 from PyQt6.QtCore import QModelIndex, pyqtSignal
 from PyQt6.QtGui import *
@@ -18,6 +19,8 @@ import aas_editor.widgets as widgets
 import aas_editor.widgets.messsageBoxes
 import aas_editor.widgets.groupBoxes
 from aas_editor.settings.app_settings import *
+from aas_editor.utils.recovery import find_recovery_files
+from aas_editor.utils.exceptionhook import set_crash_callback
 from aas_editor.settings.icons import EXIT_ICON, SETTINGS_ICON, NEW_PACK_ICON
 from aas_editor.settings import APPLICATION_NAME, REPORT_ERROR_LINK
 from aas_editor.widgets.settingWidgets import SettingsDialog
@@ -48,6 +51,7 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         self.initToolbars()
         self.buildHandlers()
         self.restoreSettingsFromLastSession()
+        set_crash_callback(self._save_recovery_files)
 
         if fileToOpen:
             self.openAASFile(fileToOpen)
@@ -293,9 +297,37 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         self.applyLastSessionTreeStates()
 
     def openLastSessionFiles(self):
+        recovery_map = find_recovery_files(RECOVERY_DIR)
         openedAasFiles = AppSettings.AAS_FILES_TO_OPEN_ON_START.value()
         for file in openedAasFiles:
-            self.openAASFile(file)
+            file_path = Path(file)
+            if file_path in recovery_map:
+                reply = QMessageBox.question(
+                    self, "Restore unsaved changes",
+                    f"A recovery file was found for:\n{file_path.name}\n\n"
+                    "The app may have crashed with unsaved changes.\n"
+                    "Do you want to restore the last auto-saved version?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.openAASFile(str(recovery_map[file_path]))
+                    self.setWindowModified(True)
+                else:
+                    rec = recovery_map[file_path]
+                    rec.unlink(missing_ok=True)
+                    rec.with_suffix(".meta.json").unlink(missing_ok=True)
+                    self.openAASFile(file)
+            else:
+                self.openAASFile(file)
+
+    def _save_recovery_files(self):
+        for pkg in self.packTreeModel.openedPacks():
+            if pkg.file and pkg.file.exists():
+                try:
+                    pkg.write_recovery(RECOVERY_DIR)
+                except Exception:
+                    pass
 
     def openAASFile(self, filePath: str):
         try:

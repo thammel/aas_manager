@@ -8,7 +8,9 @@
 #
 #  A copy of the GNU General Public License is available at http://www.gnu.org/licenses/
 
+import hashlib
 import io
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Union, Iterable, Optional
@@ -102,6 +104,33 @@ class Package:
                                              self.objStore, self.fileStore, self.writeJsonInAasx)
         else:
             raise TypeError("Wrong file type:", self.file.suffix)
+
+    def _recovery_stem(self) -> str:
+        return hashlib.sha256(self.file.as_posix().encode()).hexdigest()[:12]
+
+    def recovery_path(self, recovery_dir: Path) -> Path:
+        return recovery_dir / f"{self._recovery_stem()}{self.file.suffix}"
+
+    def write_recovery(self, recovery_dir: Path) -> Path:
+        recovery_dir.mkdir(parents=True, exist_ok=True)
+        original_file = self._file
+        stem = self._recovery_stem()
+        rec_path = recovery_dir / f"{stem}{original_file.suffix}"
+        meta_path = recovery_dir / f"{stem}.meta.json"
+        self.write(str(rec_path))
+        self._file = original_file  # restore path mutated by write()
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "original_path": original_file.as_posix(),
+                "recovery_filename": rec_path.name,
+            }, f)
+        return rec_path
+
+    def delete_recovery(self, recovery_dir: Path) -> None:
+        stem = self._recovery_stem()
+        for suffix in (self.file.suffix, ".meta.json"):
+            candidate = recovery_dir / f"{stem}{suffix}"
+            candidate.unlink(missing_ok=True)
 
     def all_submodels_to_aas(self):
         """Add references of all existing submodels to submodel attribute of existing AAS."""
