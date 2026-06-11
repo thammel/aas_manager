@@ -19,7 +19,7 @@ import aas_editor.widgets as widgets
 import aas_editor.widgets.messsageBoxes
 import aas_editor.widgets.groupBoxes
 from aas_editor.settings.app_settings import *
-from aas_editor.utils.recovery import find_recovery_files
+from aas_editor.utils.recovery import find_recovery_files, delete_recovery_file
 from aas_editor.utils.exceptionhook import set_crash_callback
 from aas_editor.settings.icons import EXIT_ICON, SETTINGS_ICON, NEW_PACK_ICON
 from aas_editor.settings import APPLICATION_NAME, REPORT_ERROR_LINK
@@ -320,13 +320,10 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                             break
                     self.packTreeModel.layoutChanged.emit()
                     # Recovery files no longer needed — a new crash will create fresh ones
-                    rec.unlink(missing_ok=True)
-                    (rec.parent / (rec.stem + ".meta.json")).unlink(missing_ok=True)
+                    delete_recovery_file(rec)
                     self.setWindowModified(True)
                 else:
-                    rec = recovery_map[file_path]
-                    rec.unlink(missing_ok=True)
-                    (rec.parent / (rec.stem + ".meta.json")).unlink(missing_ok=True)
+                    delete_recovery_file(recovery_map[file_path])
                     self.openAASFile(file)
             else:
                 self.openAASFile(file)

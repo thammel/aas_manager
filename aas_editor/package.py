@@ -105,8 +105,9 @@ class Package:
         else:
             raise TypeError("Wrong file type:", self.file.suffix)
 
-    def _recovery_stem(self) -> str:
-        return hashlib.sha256(self.file.as_posix().encode()).hexdigest()[:12]
+    def _recovery_stem(self, for_file: Path = None) -> str:
+        file = self.file if for_file is None else Path(for_file)
+        return hashlib.sha256(file.as_posix().encode()).hexdigest()[:12]
 
     def recovery_path(self, recovery_dir: Path) -> Path:
         return recovery_dir / f"{self._recovery_stem()}{self.file.suffix}"
@@ -126,9 +127,11 @@ class Package:
             }, f)
         return rec_path
 
-    def delete_recovery(self, recovery_dir: Path) -> None:
-        stem = self._recovery_stem()
-        for suffix in (self.file.suffix, ".meta.json"):
+    def delete_recovery(self, recovery_dir: Path, for_file: Path = None) -> None:
+        # for_file lets callers target a previous path (e.g. after Save-As mutated self.file)
+        file = self.file if for_file is None else Path(for_file)
+        stem = self._recovery_stem(file)
+        for suffix in (file.suffix, ".meta.json"):
             candidate = recovery_dir / f"{stem}{suffix}"
             candidate.unlink(missing_ok=True)
 

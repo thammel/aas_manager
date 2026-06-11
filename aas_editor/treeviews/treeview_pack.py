@@ -652,9 +652,10 @@ class PackTreeView(TreeView):
 
     def savePack(self, pack: Package = None, file: str = None) -> bool:
         pack = self.currentIndex().data(PACKAGE_ROLE) if pack is None else pack
+        originalFile = pack.file  # write(file) may change pack.file on Save-As
         try:
             pack.write(file)
-            pack.delete_recovery(RECOVERY_DIR)
+            pack.delete_recovery(RECOVERY_DIR, for_file=originalFile)
             self.updateRecentFiles(pack.file.absolute().as_posix())
             if self.model().rowCount(QModelIndex()) == 1:
                 self.setWindowModified(False)

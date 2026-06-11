@@ -18,3 +18,9 @@ def find_recovery_files(recovery_dir: Path) -> dict:
         except Exception:
             continue
     return result
+
+
+def delete_recovery_file(recovery_path: Path) -> None:
+    """Delete a recovery data file and its sidecar .meta.json."""
+    recovery_path.unlink(missing_ok=True)
+    (recovery_path.parent / f"{recovery_path.stem}.meta.json").unlink(missing_ok=True)
