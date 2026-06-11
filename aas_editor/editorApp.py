@@ -311,17 +311,32 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                     QMessageBox.StandardButton.Yes,
                 )
                 if reply == QMessageBox.StandardButton.Yes:
-                    self.openAASFile(str(recovery_map[file_path]))
+                    rec = recovery_map[file_path]
+                    self.openAASFile(str(rec))
+                    # Remap package to original path so Save targets the real file
+                    for pkg in self.packTreeModel.openedPacks():
+                        if pkg.file == rec:
+                            pkg.file = file_path
+                            break
+                    self.packTreeModel.layoutChanged.emit()
+                    # Recovery files no longer needed — a new crash will create fresh ones
+                    rec.unlink(missing_ok=True)
+                    (rec.parent / (rec.stem + ".meta.json")).unlink(missing_ok=True)
                     self.setWindowModified(True)
                 else:
                     rec = recovery_map[file_path]
                     rec.unlink(missing_ok=True)
-                    rec.with_suffix(".meta.json").unlink(missing_ok=True)
+                    (rec.parent / (rec.stem + ".meta.json")).unlink(missing_ok=True)
                     self.openAASFile(file)
             else:
                 self.openAASFile(file)
 
     def _save_recovery_files(self):
+        # Persist open-file list before crash exits — closeEvent won't run
+        AppSettings.AAS_FILES_TO_OPEN_ON_START.setValue(self.packTreeModel.openedFiles())
+        SETTINGS.sync()
+        if not self.isWindowModified():
+            return
         for pkg in self.packTreeModel.openedPacks():
             if pkg.file and pkg.file.exists():
                 try:
