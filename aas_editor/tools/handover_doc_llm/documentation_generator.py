@@ -105,7 +105,7 @@ DocumentClassificationVDI2770 = {
     }
 }
 
-def json2document(json_str: str):
+def json2document(json_str: str, filename: str = None):
     """
     Convert a JSON string to documents and entities.
 
@@ -134,7 +134,7 @@ def json2document(json_str: str):
     )
 
     digitalFile = HandoverDocumentation.Documents.Documents_item.DocumentVersions.Documentversions_item.DigitalFiles.Digitalfiles_item(
-        value="SOME_PATH", #TODO: Fix me
+        value=filename, 
         content_type=MIME_TYPE)
 
     statusSetDate = obj['document']['documentVersion'].get('statusSetDate', '').split('-')

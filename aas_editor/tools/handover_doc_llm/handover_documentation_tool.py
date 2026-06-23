@@ -36,6 +36,10 @@ from aas_editor.tools.handover_doc_llm.config import PROMPT, LLM_PROVIDERS, EMBE
 from aas_editor.widgets.dropfilebox import DropFileQWebEngineView
 from aas_editor.widgets.jsonEditor import JSONEditor
 
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import ChatPromptTemplate
+
 DOCUMENT_ROLE = 1000
 
 
@@ -102,13 +106,9 @@ class PdfProcessingThread(QThread):
 
     def run(self):
         tmp_path = None
-
         try:
-            from langchain_community.document_loaders import PyPDFLoader
-            from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-            from langchain_core.prompts import ChatPromptTemplate
-
-            # 1. Safer File Handling: Copy file instead of reading entire bytes into memory
+            # 1. Load PDF via pypdf directly (avoids langchain_community import chain
+            #    which triggers a C-stack overflow on Python 3.14 via transformers/numpy)
             suffix = ".pdf"
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_pdf:
                 tmp_path = tmp_pdf.name
@@ -385,6 +385,7 @@ class HandoverDocumentationToolDialog(QDialog):
 
     def processPdf(self, file: str):
         self.current_file = file
+        self.current_filename = os.path.basename(self.current_file)
         self.html_renderer.setHtml("""
             <div style='text-align: center; padding: 50px; font-size: 18px;'>
                 <div style='margin-bottom: 20px;'>Processing PDF...</div>
@@ -508,9 +509,9 @@ class HandoverDocumentationToolDialog(QDialog):
         while dialog.exec():
             try:
                 json_str = dialog.text.text()
-                document = json2document(json_str)
+                document = json2document(json_str, self.current_filename)
 
-                item = QListWidgetItem(os.path.basename(self.current_file))
+                item = QListWidgetItem(self.current_filename)
                 item.setData(DOCUMENT_ROLE, document)
                 item.setToolTip(self.current_file)
                 self.documentList.addItem(item)
