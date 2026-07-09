@@ -43,7 +43,8 @@ from aas_editor.settings import FILTER_AAS_FILES, AAS_FILE_TYPE_FILTERS, NOT_GIV
 from aas_editor.settings.app_settings import NAME_ROLE, OBJECT_ROLE, PACKAGE_ROLE, \
     MAX_RECENT_FILES, OPENED_PACKS_ROLE, OPENED_FILES_ROLE, ADD_ITEM_ROLE, \
     CLEAR_ROW_ROLE, AppSettings, COLUMN_NAME_ROLE, OBJECT_COLUMN_NAME, \
-    OBJECT_VALUE_COLUMN_NAME, DEFAULT_COLUMNS_IN_PACKS_TABLE_TO_SHOW, COPY_ROLE, SUBMODEL_TEMPLATES_FOLDER, UPDATE_ROLE
+    OBJECT_VALUE_COLUMN_NAME, DEFAULT_COLUMNS_IN_PACKS_TABLE_TO_SHOW, COPY_ROLE, SUBMODEL_TEMPLATES_FOLDER, UPDATE_ROLE, \
+    RECOVERY_DIR
 from aas_editor.settings.shortcuts import SC_OPEN, SC_SAVE_ALL
 from aas_editor.settings.icons import NEW_PACK_ICON, OPEN_ICON, OPEN_DRAG_ICON, SAVE_ICON, SAVE_ALL_ICON, ADD_ICON, \
     EDIT_JSON_ICON
@@ -651,8 +652,10 @@ class PackTreeView(TreeView):
 
     def savePack(self, pack: Package = None, file: str = None) -> bool:
         pack = self.currentIndex().data(PACKAGE_ROLE) if pack is None else pack
+        originalFile = pack.file  # write(file) may change pack.file on Save-As
         try:
             pack.write(file)
+            pack.delete_recovery(RECOVERY_DIR, for_file=originalFile)
             self.updateRecentFiles(pack.file.absolute().as_posix())
             if self.model().rowCount(QModelIndex()) == 1:
                 self.setWindowModified(False)
