@@ -11,6 +11,7 @@
 import hashlib
 import io
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Union, Iterable, Optional
@@ -127,8 +128,21 @@ class Package:
         stem = self._recovery_stem()
         rec_path = recovery_dir / f"{stem}{original_file.suffix}"
         meta_path = recovery_dir / f"{stem}.meta.json"
-        self.write(str(rec_path))
-        self._file = original_file  # restore path mutated by write()
+        tmp_path = recovery_dir / f"{stem}.tmp{original_file.suffix}"
+
+        # Write to a temp file first: a write that fails halfway must not replace
+        # a previous, complete recovery file with a truncated one.
+        try:
+            self.write(str(tmp_path))
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+        finally:
+            self._file = original_file  # restore path mutated by write()
+        os.replace(tmp_path, rec_path)
+
+        # Meta is written last: find_recovery_files() only offers entries with a
+        # meta file, so an incomplete recovery is never presented for restoring.
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump({
                 "original_path": original_file.as_posix(),
@@ -140,7 +154,7 @@ class Package:
         # for_file lets callers target a previous path (e.g. after Save-As mutated self.file)
         file = self.file if for_file is None else Path(for_file)
         stem = self._recovery_stem(file)
-        for suffix in (file.suffix, ".meta.json"):
+        for suffix in (file.suffix, ".meta.json", f".tmp{file.suffix}"):
             candidate = recovery_dir / f"{stem}{suffix}"
             candidate.unlink(missing_ok=True)
 

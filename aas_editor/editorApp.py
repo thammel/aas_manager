@@ -315,18 +315,25 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                 )
                 if reply == QMessageBox.StandardButton.Yes:
                     rec = recovery_map[file_path]
-                    self.openAASFile(str(rec))
-                    # Remap package to original path so Save targets the real file
-                    for pkg in self.packTreeModel.openedPacks():
-                        if pkg.file == rec:
-                            pkg.file = file_path
-                            # Restored content is unsaved until the user writes it back
-                            pkg.changed = True
-                            break
-                    self.packTreeModel.layoutChanged.emit()
-                    # Recovery files no longer needed — a new crash will create fresh ones
-                    delete_recovery_file(rec)
-                    self.setWindowModified(True)
+                    pack = self.openAASFile(str(rec))
+                    if pack:
+                        # Remap package to original path so Save targets the real file
+                        pack.file = file_path
+                        # Restored content is unsaved until the user writes it back
+                        pack.changed = True
+                        self.packTreeModel.layoutChanged.emit()
+                        self.setWindowModified(True)
+                        # Recovery files are kept until the first successful save,
+                        # so a crash before that save does not lose the restored data
+                    else:
+                        # Restore failed (unreadable file, or user cancelled the dialog).
+                        # Never delete the recovery data here — it may still be salvageable.
+                        QMessageBox.warning(
+                            self, "Restore failed",
+                            f"The recovery file for {file_path.name} could not be opened.\n\n"
+                            f"It was kept at:\n{rec}\n\n"
+                            "Opening the last saved version instead.")
+                        self.openAASFile(file)
                 else:
                     delete_recovery_file(recovery_map[file_path])
                     self.openAASFile(file)
@@ -347,11 +354,14 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                     pass
 
     def openAASFile(self, filePath: str):
+        """Return the opened Package, or None if it could not be opened."""
+        pack = None
         try:
-            self.mainTreeView.openPack(filePath)
+            pack = self.mainTreeView.openPack(filePath)
         except OSError:
             pass
         self.packTreeModel.setData(QModelIndex(), [], UNDO_ROLE)
+        return pack  # None if the file could not be opened
 
     def applyLastSessionTreeStates(self):
         packTreeViewHeader: HeaderView = self.mainTreeView.header()

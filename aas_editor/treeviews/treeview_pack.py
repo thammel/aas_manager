@@ -613,7 +613,7 @@ class PackTreeView(TreeView):
                 # cancel pressed
                 return
 
-    def openPack(self, file: str) -> typing.Union[bool, Package]:
+    def openPack(self, file: str) -> Optional[Package]:
         try:
             try:
                 pack = Package(file, failsafe=False)
@@ -632,7 +632,7 @@ class PackTreeView(TreeView):
                 if ret == QMessageBox.StandardButton.Yes:
                     pack = Package(file, failsafe=True)
                 else:
-                    return False
+                    return None
             absFile = pack.file.absolute().as_posix()
             self.updateRecentFiles(absFile)
         except Exception as e:
@@ -645,7 +645,7 @@ class PackTreeView(TreeView):
             else:
                 self.add_pack_to_tree(pack)
                 return pack
-        return False
+        return None
 
     def add_pack_to_tree(self, pack: Package):
         self.model().setData(QModelIndex(), pack, ADD_ITEM_ROLE)
@@ -757,7 +757,17 @@ class PackTreeView(TreeView):
         self.model().setData(packItem, NOT_GIVEN, CLEAR_ROW_ROLE)
         self.updateWindowModified()
 
+    @staticmethod
+    def isRecoveryFile(file) -> bool:
+        """Recovery files are internal auto-saves and must never reach the recent files list."""
+        try:
+            return Path(file).absolute().parent == RECOVERY_DIR.absolute()
+        except (TypeError, ValueError, OSError):
+            return False
+
     def updateRecentFiles(self, file: str):
+        if self.isRecoveryFile(file):
+            return
         self.removeFromRecentFiles(file)
         settings = QSettings(IAT, APPLICATION_NAME)
         files = settings.value('recentFiles', [])
