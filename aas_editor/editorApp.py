@@ -270,6 +270,9 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
             self.currTheme = theme
 
     def closeEvent(self, a0: QCloseEvent) -> None:
+        # Edits made in a detached tab window set the flag on that window, not on this one,
+        # so rebuild it from the packages before deciding whether to ask for saving
+        self.mainTreeView.updateWindowModified()
         if not self.packTreeModel.openedFiles():
             a0.accept()
         elif self.isWindowModified():
@@ -317,6 +320,8 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                     for pkg in self.packTreeModel.openedPacks():
                         if pkg.file == rec:
                             pkg.file = file_path
+                            # Restored content is unsaved until the user writes it back
+                            pkg.changed = True
                             break
                     self.packTreeModel.layoutChanged.emit()
                     # Recovery files no longer needed — a new crash will create fresh ones
@@ -332,10 +337,10 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         # Persist open-file list before crash exits — closeEvent won't run
         AppSettings.AAS_FILES_TO_OPEN_ON_START.setValue(self.packTreeModel.openedFiles())
         SETTINGS.sync()
-        if not self.isWindowModified():
-            return
         for pkg in self.packTreeModel.openedPacks():
-            if pkg.file and pkg.file.exists():
+            # Per-package flag: the window modified flag is shared and gets reset
+            # whenever any package is saved or closed
+            if pkg.changed and pkg.file and pkg.file.exists():
                 try:
                     pkg.write_recovery(RECOVERY_DIR)
                 except Exception:

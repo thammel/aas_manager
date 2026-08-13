@@ -47,6 +47,15 @@ class Package:
         self._file = Path(file).absolute()
 
     @property
+    def changed(self) -> bool:
+        """True if the package holds modifications which are not written to its file yet."""
+        return self._changed
+
+    @changed.setter
+    def changed(self, value: bool):
+        self._changed = bool(value)
+
+    @property
     def writeJsonInAasx(self):
         return AppSettings.WRITE_JSON_IN_AASX.value()
 
