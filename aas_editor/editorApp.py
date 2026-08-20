@@ -8,6 +8,7 @@
 #
 #  A copy of the GNU General Public License is available at http://www.gnu.org/licenses/
 import json
+import logging
 import webbrowser
 from pathlib import Path
 
@@ -54,16 +55,22 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         self.restoreSettingsFromLastSession()
         set_crash_callback(self._save_recovery_files)
 
-        # sys.excepthook only fires for uncaught exceptions on the main thread, so
-        # native crashes (segfaults, the C-stack overflow the handover PDF worker
-        # thread can hit, OOM kills) run no Python and never reach _save_recovery_files.
-        # Persist recovery proactively instead: a debounced write shortly after edits
-        # pause, coalescing bursts so it stays off the typing hot path. The crash
-        # callback then only has to flush whatever happened since the last write.
+        # sys.excepthook misses native crashes (segfaults, OOM kills), which run no
+        # Python and never reach _save_recovery_files. Persist proactively instead:
+        # a debounced write after edits pause, coalescing bursts off the typing path.
         self._recoveryTimer = QTimer(self)
         self._recoveryTimer.setSingleShot(True)
         self._recoveryTimer.setInterval(RECOVERY_DEBOUNCE_MS)
         self._recoveryTimer.timeout.connect(self._save_recovery_files)
+        # Tracks whether the last recovery write failed, so the status-bar warning is
+        # shown once on failure and cleared once writing recovers.
+        self._recoveryWriteFailed = False
+        # Permanent widget, not showMessage(): transient status tips (menu hover)
+        # do not overwrite it, so the warning stays until writing recovers.
+        self._recoveryStatusLabel = QLabel()
+        self._recoveryStatusLabel.setStyleSheet("color: #c0392b;")
+        self._recoveryStatusLabel.hide()
+        self.statusBar().addPermanentWidget(self._recoveryStatusLabel)
         # Register so edits in detached tab windows (plain TabWidgets that cannot
         # reach this window via self.window()) also schedule the debounced write.
         set_recovery_scheduler(self.scheduleRecoverySave)
@@ -387,6 +394,7 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         # Persist open-file list before crash exits — closeEvent won't run
         AppSettings.AAS_FILES_TO_OPEN_ON_START.setValue(self.packTreeModel.openedFiles())
         SETTINGS.sync()
+        writeFailed = False
         for pkg in self.packTreeModel.openedPacks():
             # Per-package flag: the window modified flag is shared and gets reset
             # whenever any package is saved or closed
@@ -394,7 +402,28 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                 try:
                     pkg.write_recovery(RECOVERY_DIR)
                 except Exception:
-                    pass
+                    # Never let a failed recovery write abort the crash handler or the
+                    # debounce, but log it: a silent failure means the user believes they
+                    # are protected while no recovery is being written (disk full, etc.).
+                    writeFailed = True
+                    logging.exception("Failed to write recovery file for %s", pkg.file)
+        self._reportRecoveryWriteStatus(writeFailed)
+
+    def _reportRecoveryWriteStatus(self, writeFailed: bool):
+        """Show a non-blocking status-bar warning while recovery writes are failing.
+
+        Informant only: no dialog, no interruption. Shown once on the transition to
+        failure and cleared once writes recover, so a persistently failing write does
+        not spam a message on every debounce tick.
+        """
+        if writeFailed and not self._recoveryWriteFailed:
+            self._recoveryStatusLabel.setText(
+                "⚠ Auto-recovery could not be saved — unsaved changes are not backed up. "
+                "See log for details.")
+            self._recoveryStatusLabel.show()
+        elif not writeFailed and self._recoveryWriteFailed:
+            self._recoveryStatusLabel.hide()
+        self._recoveryWriteFailed = writeFailed
 
     def openAASFile(self, filePath: str):
         """Return the opened Package, or None if it could not be opened."""
