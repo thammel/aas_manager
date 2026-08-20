@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
+from typing import Iterable
 
-# Detached tab windows are plain TabWidgets, not EditorApp, so a tree view cannot
-# reach the debounce timer through self.window(). The main window registers its
-# scheduler here so edits in any window trigger a proactive recovery write.
+# Detached tab windows cannot reach the debounce timer via self.window(), so the
+# main window registers its scheduler here for edits in any window to trigger it.
 _recovery_scheduler = None
 
 
@@ -45,3 +45,20 @@ def delete_recovery_file(recovery_path: Path) -> None:
     """Delete a recovery data file and its sidecar .meta.json."""
     recovery_path.unlink(missing_ok=True)
     (recovery_path.parent / f"{recovery_path.stem}.meta.json").unlink(missing_ok=True)
+
+
+def cleanup_recovery_dir(recovery_dir: Path, keep: Iterable[Path] = ()) -> None:
+    """Delete all files in the recovery dir except `keep` (and their .meta.json).
+
+    `keep` holds recovery files of just-restored, not-yet-saved packages; the rest
+    (declined, orphaned, leftover .tmp) are swept so the dir does not grow unbounded.
+    """
+    if not recovery_dir.exists():
+        return
+    keep_names = set()
+    for rec in keep:
+        keep_names.add(rec.name)
+        keep_names.add(f"{rec.stem}.meta.json")
+    for entry in recovery_dir.iterdir():
+        if entry.is_file() and entry.name not in keep_names:
+            entry.unlink(missing_ok=True)

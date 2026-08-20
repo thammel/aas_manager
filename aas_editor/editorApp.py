@@ -19,7 +19,8 @@ import aas_editor.widgets as widgets
 import aas_editor.widgets.messsageBoxes
 import aas_editor.widgets.groupBoxes
 from aas_editor.settings.app_settings import *
-from aas_editor.utils.recovery import find_recovery_files, delete_recovery_file, set_recovery_scheduler
+from aas_editor.utils.recovery import find_recovery_files, delete_recovery_file, set_recovery_scheduler, \
+    cleanup_recovery_dir
 from aas_editor.utils.exceptionhook import set_crash_callback
 from aas_editor.settings.icons import EXIT_ICON, SETTINGS_ICON, NEW_PACK_ICON
 from aas_editor.settings import APPLICATION_NAME, REPORT_ERROR_LINK
@@ -323,6 +324,9 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
     def openLastSessionFiles(self):
         recovery_map = find_recovery_files(RECOVERY_DIR)
         openedAasFiles = AppSettings.AAS_FILES_TO_OPEN_ON_START.value()
+        # Recovery files restored this launch: kept through the sweep below until their
+        # first save, so a native crash before that save still has the restored data.
+        keptRecoveries = []
         for file in openedAasFiles:
             file_path = Path(file)
             if file_path in recovery_map:
@@ -336,16 +340,17 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                 )
                 if reply == QMessageBox.StandardButton.Yes:
                     rec = recovery_map[file_path]
+                    # Kept whether or not the open succeeds: a failed restore below still
+                    # keeps the recovery data as it may be salvageable by hand.
+                    keptRecoveries.append(rec)
                     pack = self.openAASFile(str(rec))
                     if pack:
                         # Remap package to original path so Save targets the real file
                         pack.file = file_path
                         # Restored content is unsaved until the user writes it back
                         pack.changed = True
-                        # The tree row re-reads NAME_ROLE on repaint, but open tabs
-                        # cache their label and only update on windowTitleChanged,
-                        # which the remap does not fire. Refresh them so the tab shows
-                        # the real file name, not the recovery file's hashed stem.
+                        # Open tabs cache their label/path and miss the remap, so
+                        # refresh them to show the real name, not the recovery stem.
                         self.mainTabWidget.refreshTabTitles()
                         self.setWindowModified(True)
                         # Recovery files are kept until the first successful save,
@@ -364,6 +369,11 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                     self.openAASFile(file)
             else:
                 self.openAASFile(file)
+
+        # Drop everything left in the recovery dir except the entries just restored:
+        # declined files, orphans (recovery for files no longer opened on start),
+        # stale .meta.json and leftover .tmp writes. Keeps the dir from growing forever.
+        cleanup_recovery_dir(RECOVERY_DIR, keptRecoveries)
 
     def scheduleRecoverySave(self):
         """(Re)start the debounce so recovery is written once editing pauses.
