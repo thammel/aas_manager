@@ -390,6 +390,20 @@ class TabWithTreeView(QWidget):
                                   triggered=lambda: self.openNextItem(),
                                   enabled=False)
 
+    def refreshPackItemInfo(self):
+        """Re-read the header fields derived from the current pack item.
+
+        The path line and window title are set once in _openItem and are not tied to
+        any change signal. Call this when the underlying item's name/path changed
+        without reopening the tab — e.g. crash recovery remaps a package from its
+        recovery file back to the real file path, changing Package.name and its path.
+        setWindowTitle emits windowTitleChanged, so this also refreshes the tab label.
+        """
+        if not self.packItem.isValid():
+            return  # welcome / empty tab: nothing opened, nothing to refresh
+        self.pathLine.setText(getTreeItemPath(self.packItem))
+        self.setWindowTitle(self.packItem.data(Qt.ItemDataRole.DisplayRole))
+
     def windowTitle(self) -> str:
         return self.packItem.data(NAME_ROLE)
 
@@ -635,6 +649,19 @@ class TabWidget(QTabWidget):
         else:
             tabIndex = self.addTab(widget, icon, label)
         return tabIndex
+
+    def refreshTabTitles(self):
+        """Re-sync every open tab's header (label, icon, path line) with its item.
+
+        Call this when an item's name/path changed without the tab reopening — e.g.
+        after crash recovery remaps a package from its recovery file back to the real
+        file path, which changes Package.name and path but emits no signal.
+        """
+        for index in range(self.count()):
+            tab = self.widget(index)
+            tab.refreshPackItemInfo()
+            self.setTabText(index, tab.windowTitle())
+            self.setTabIcon(index, tab.windowIcon())
 
     def setCurrentTab(self, tabName: str):
         for index in range(self.count()):

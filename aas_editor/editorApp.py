@@ -342,12 +342,11 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                         pack.file = file_path
                         # Restored content is unsaved until the user writes it back
                         pack.changed = True
-                        # Refresh the root row for the remapped name. A bare
-                        # layoutChanged.emit() here segfaults the view (dangling
-                        # persistent indexes); targeted dataChanged is safe.
-                        matches = self.packTreeModel.match(QModelIndex(), OBJECT_ROLE, pack, hits=1)
-                        if matches:
-                            self.packTreeModel.dataChanged.emit(matches[0], matches[0])
+                        # The tree row re-reads NAME_ROLE on repaint, but open tabs
+                        # cache their label and only update on windowTitleChanged,
+                        # which the remap does not fire. Refresh them so the tab shows
+                        # the real file name, not the recovery file's hashed stem.
+                        self.mainTabWidget.refreshTabTitles()
                         self.setWindowModified(True)
                         # Recovery files are kept until the first successful save,
                         # so a crash before that save does not lose the restored data
