@@ -342,7 +342,12 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                         pack.file = file_path
                         # Restored content is unsaved until the user writes it back
                         pack.changed = True
-                        self.packTreeModel.layoutChanged.emit()
+                        # Refresh the root row for the remapped name. A bare
+                        # layoutChanged.emit() here segfaults the view (dangling
+                        # persistent indexes); targeted dataChanged is safe.
+                        matches = self.packTreeModel.match(QModelIndex(), OBJECT_ROLE, pack, hits=1)
+                        if matches:
+                            self.packTreeModel.dataChanged.emit(matches[0], matches[0])
                         self.setWindowModified(True)
                         # Recovery files are kept until the first successful save,
                         # so a crash before that save does not lose the restored data
