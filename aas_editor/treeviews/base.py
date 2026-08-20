@@ -29,6 +29,7 @@ import aas_editor.widgets as widgets
 import aas_editor.widgets.messsageBoxes
 
 from aas_editor.models.search_proxy_model import SearchProxyModel
+from aas_editor.utils.recovery import schedule_recovery_save
 from aas_editor.settings.app_settings import *
 from aas_editor.additional.classes import DictItem
 from aas_editor.delegates import EditDelegate
@@ -300,6 +301,10 @@ class BasicTreeView(QTreeView):
         pack = index.data(PACKAGE_ROLE)
         if pack is not None:
             pack.changed = True
+            # Persist recovery proactively so a native crash (which never runs
+            # sys.excepthook) cannot lose these edits. Routed through a module-level
+            # hook, not self.window(), so edits in detached tab windows count too.
+            schedule_recovery_save()
 
 
 class TreeView(BasicTreeView):

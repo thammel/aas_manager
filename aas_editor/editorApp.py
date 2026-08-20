@@ -11,7 +11,7 @@ import json
 import webbrowser
 from pathlib import Path
 
-from PyQt6.QtCore import QModelIndex, pyqtSignal
+from PyQt6.QtCore import QModelIndex, QTimer, pyqtSignal
 from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 
@@ -19,7 +19,7 @@ import aas_editor.widgets as widgets
 import aas_editor.widgets.messsageBoxes
 import aas_editor.widgets.groupBoxes
 from aas_editor.settings.app_settings import *
-from aas_editor.utils.recovery import find_recovery_files, delete_recovery_file
+from aas_editor.utils.recovery import find_recovery_files, delete_recovery_file, set_recovery_scheduler
 from aas_editor.utils.exceptionhook import set_crash_callback
 from aas_editor.settings.icons import EXIT_ICON, SETTINGS_ICON, NEW_PACK_ICON
 from aas_editor.settings import APPLICATION_NAME, REPORT_ERROR_LINK
@@ -52,6 +52,20 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         self.buildHandlers()
         self.restoreSettingsFromLastSession()
         set_crash_callback(self._save_recovery_files)
+
+        # sys.excepthook only fires for uncaught exceptions on the main thread, so
+        # native crashes (segfaults, the C-stack overflow the handover PDF worker
+        # thread can hit, OOM kills) run no Python and never reach _save_recovery_files.
+        # Persist recovery proactively instead: a debounced write shortly after edits
+        # pause, coalescing bursts so it stays off the typing hot path. The crash
+        # callback then only has to flush whatever happened since the last write.
+        self._recoveryTimer = QTimer(self)
+        self._recoveryTimer.setSingleShot(True)
+        self._recoveryTimer.setInterval(RECOVERY_DEBOUNCE_MS)
+        self._recoveryTimer.timeout.connect(self._save_recovery_files)
+        # Register so edits in detached tab windows (plain TabWidgets that cannot
+        # reach this window via self.window()) also schedule the debounced write.
+        set_recovery_scheduler(self.scheduleRecoverySave)
 
         if fileToOpen:
             self.openAASFile(fileToOpen)
@@ -285,6 +299,13 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                 self.mainTreeView.saveAll()
                 a0.accept()
             elif reply == QMessageBox.StandardButton.No:
+                # Discarding unsaved changes: stop the pending debounced write and drop
+                # the recovery files, so the next launch does not offer to restore what
+                # was deliberately thrown away.
+                self._recoveryTimer.stop()
+                for pkg in self.packTreeModel.openedPacks():
+                    if pkg.changed:
+                        pkg.delete_recovery(RECOVERY_DIR)
                 a0.accept()
             else:
                 return a0.ignore()
@@ -339,6 +360,14 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                     self.openAASFile(file)
             else:
                 self.openAASFile(file)
+
+    def scheduleRecoverySave(self):
+        """(Re)start the debounce so recovery is written once editing pauses.
+
+        Called on every edit; start() restarts the single-shot timer, so a burst
+        of edits collapses into a single write after the user stops.
+        """
+        self._recoveryTimer.start()
 
     def _save_recovery_files(self):
         # Persist open-file list before crash exits — closeEvent won't run

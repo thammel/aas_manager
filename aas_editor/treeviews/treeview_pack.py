@@ -726,6 +726,11 @@ class PackTreeView(TreeView):
                         self.savePack()
                     elif res == QMessageBox.StandardButton.Cancel:
                         return
+                    elif res == QMessageBox.StandardButton.Discard:
+                        # Explicitly discarding: drop the recovery file so the change
+                        # is not offered for restore on next launch. (A failed Save
+                        # keeps changed=True and its recovery, as a safety net.)
+                        pack.delete_recovery(RECOVERY_DIR)
                 self.closeFile(packItem)
             except AttributeError as e:
                 QMessageBox.critical(self, "Error", f"No chosen package to close: {e}")
@@ -746,6 +751,12 @@ class PackTreeView(TreeView):
                     self.savePack(pack)
             elif res == QMessageBox.StandardButton.Cancel:
                 return
+            elif res == QMessageBox.StandardButton.Discard:
+                # Explicitly discarding all: drop recovery files for unsaved packages
+                # so they are not offered for restore on next launch.
+                for pack in self.model().data(QModelIndex(), OPENED_PACKS_ROLE):
+                    if pack.changed:
+                        pack.delete_recovery(RECOVERY_DIR)
         self.closeAllFiles()
 
     def closeAllFiles(self):
