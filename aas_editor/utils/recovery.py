@@ -17,9 +17,8 @@ def schedule_recovery_save() -> None:
         try:
             _recovery_scheduler()
         except RuntimeError:
-            # The registered window was destroyed (e.g. the main window was closed
-            # while a detached tab window stayed open). Proactive save is unavailable
-            # until a live window re-registers; do not crash the edit that triggered it.
+            # Registered window was destroyed; skip until a live one re-registers,
+            # but do not crash the edit that triggered this.
             pass
 
 

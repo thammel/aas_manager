@@ -307,9 +307,8 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                 self.mainTreeView.saveAll()
                 a0.accept()
             elif reply == QMessageBox.StandardButton.No:
-                # Discarding unsaved changes: stop the pending debounced write and drop
-                # the recovery files, so the next launch does not offer to restore what
-                # was deliberately thrown away.
+                # Discarding: stop the pending write and drop the recovery files so
+                # the next launch does not offer to restore discarded changes.
                 self._recoveryTimer.stop()
                 for pkg in self.packTreeModel.openedPacks():
                     if pkg.changed:

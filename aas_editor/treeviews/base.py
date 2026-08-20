@@ -301,8 +301,7 @@ class BasicTreeView(QTreeView):
         pack = index.data(PACKAGE_ROLE)
         if pack is not None:
             pack.changed = True
-            # Persist recovery proactively so a native crash (which never runs
-            # sys.excepthook) cannot lose these edits. Routed through a module-level
+            # Proactive recovery write for native crashes. Routed through a module
             # hook, not self.window(), so edits in detached tab windows count too.
             schedule_recovery_save()
 

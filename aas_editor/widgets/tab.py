@@ -391,13 +391,11 @@ class TabWithTreeView(QWidget):
                                   enabled=False)
 
     def refreshPackItemInfo(self):
-        """Re-read the header fields derived from the current pack item.
+        """Re-read the header fields (path line, title) derived from the pack item.
 
-        The path line and window title are set once in _openItem and are not tied to
-        any change signal. Call this when the underlying item's name/path changed
-        without reopening the tab — e.g. crash recovery remaps a package from its
-        recovery file back to the real file path, changing Package.name and its path.
-        setWindowTitle emits windowTitleChanged, so this also refreshes the tab label.
+        These are set once in _openItem with no change signal, so call this when the
+        item's name/path changed without reopening (e.g. crash-recovery remap).
+        setWindowTitle emits windowTitleChanged, so the tab label refreshes too.
         """
         if not self.packItem.isValid():
             return  # welcome / empty tab: nothing opened, nothing to refresh

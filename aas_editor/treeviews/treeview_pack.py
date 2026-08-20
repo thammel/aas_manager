@@ -727,9 +727,8 @@ class PackTreeView(TreeView):
                     elif res == QMessageBox.StandardButton.Cancel:
                         return
                     elif res == QMessageBox.StandardButton.Discard:
-                        # Explicitly discarding: drop the recovery file so the change
-                        # is not offered for restore on next launch. (A failed Save
-                        # keeps changed=True and its recovery, as a safety net.)
+                        # Discarding: drop the recovery file so it is not offered for
+                        # restore next launch. (A failed Save keeps it, as a safety net.)
                         pack.delete_recovery(RECOVERY_DIR)
                 self.closeFile(packItem)
             except AttributeError as e:
