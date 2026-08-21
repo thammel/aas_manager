@@ -771,7 +771,9 @@ class PackTreeView(TreeView):
     def isRecoveryFile(file) -> bool:
         """Recovery files are internal auto-saves and must never reach the recent files list."""
         try:
-            return Path(file).absolute().parent == RECOVERY_DIR.absolute()
+            # resolve() (not absolute()) so symlinks and '..' segments normalise; an
+            # unresolved path could slip a recovery file past this check into recents.
+            return Path(file).resolve().parent == RECOVERY_DIR.resolve()
         except (TypeError, ValueError, OSError):
             return False
 

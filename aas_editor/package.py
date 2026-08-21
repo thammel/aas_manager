@@ -139,7 +139,12 @@ class Package:
             raise
         finally:
             self._file = original_file  # restore path mutated by write()
-        os.replace(tmp_path, rec_path)
+        try:
+            os.replace(tmp_path, rec_path)
+        except Exception:
+            # e.g. cross-device or permission error: do not leave the temp write behind
+            tmp_path.unlink(missing_ok=True)
+            raise
 
         # Meta is written last: find_recovery_files() only offers entries with a
         # meta file, so an incomplete recovery is never presented for restoring.

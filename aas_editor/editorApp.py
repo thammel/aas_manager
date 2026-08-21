@@ -65,6 +65,10 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         # Tracks whether the last recovery write failed, so the status-bar warning is
         # shown once on failure and cleared once writing recovers.
         self._recoveryWriteFailed = False
+        # Last open-file list persisted to settings. The debounced write runs on every
+        # edit pause, but edits never change this list, so we sync it only when it
+        # actually changes (open/close) instead of on every tick.
+        self._lastPersistedOpenFiles = None
         # Permanent widget, not showMessage(): transient status tips (menu hover)
         # do not overwrite it, so the warning stays until writing recovers.
         self._recoveryStatusLabel = QLabel()
@@ -393,9 +397,15 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         self._recoveryTimer.start()
 
     def _save_recovery_files(self):
-        # Persist open-file list before crash exits — closeEvent won't run
-        AppSettings.AAS_FILES_TO_OPEN_ON_START.setValue(self.packTreeModel.openedFiles())
-        SETTINGS.sync()
+        # Persist open-file list before crash exits — closeEvent won't run. Restore
+        # matches recovery files against this list, so it must stay current for a native
+        # crash to offer them. Edits do not change it, so sync only when it changed to
+        # keep the debounced write off the disk on every tick.
+        openFiles = self.packTreeModel.openedFiles()
+        if openFiles != self._lastPersistedOpenFiles:
+            AppSettings.AAS_FILES_TO_OPEN_ON_START.setValue(openFiles)
+            SETTINGS.sync()
+            self._lastPersistedOpenFiles = openFiles
         writeFailed = False
         for pkg in self.packTreeModel.openedPacks():
             # Per-package flag: the window modified flag is shared and gets reset
