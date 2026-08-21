@@ -657,6 +657,10 @@ class TabWidget(QTabWidget):
         """
         for index in range(self.count()):
             tab = self.widget(index)
+            # Not every tab is a TabWithTreeView (e.g. plain/placeholder widgets),
+            # so skip any that cannot refresh their pack-derived header.
+            if not isinstance(tab, TabWithTreeView):
+                continue
             tab.refreshPackItemInfo()
             self.setTabText(index, tab.windowTitle())
             self.setTabIcon(index, tab.windowIcon())
