@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from typing import Iterable
 
@@ -36,11 +37,16 @@ def find_recovery_files(recovery_dir: Path) -> dict:
         try:
             with open(meta_file, encoding="utf-8") as f:
                 meta = json.load(f)
-            original = Path(meta["original_path"])
+            # resolve() so the key matches the resolved open-file paths restore
+            # compares against; an unresolved symlink/'..' would miss the match.
+            original = Path(meta["original_path"]).resolve()
             recovery = recovery_dir / meta["recovery_filename"]
             if recovery.exists():
                 result[original] = recovery
         except Exception:
+            # Corrupt/unreadable meta: skip it, but log so a user who lost
+            # recovery has a diagnostic instead of silence.
+            logging.warning("Skipping unreadable recovery meta file: %s", meta_file, exc_info=True)
             continue
     return result
 

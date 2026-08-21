@@ -341,7 +341,9 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         # first save, so a native crash before that save still has the restored data.
         keptRecoveries = []
         for file in openedAasFiles:
-            file_path = Path(file)
+            # resolve() to match find_recovery_files()'s resolved keys, so a
+            # symlinked or '..'-containing path still lines up with its recovery.
+            file_path = Path(file).resolve()
             if file_path in recovery_map:
                 reply = QMessageBox.question(
                     self, "Restore unsaved changes",
