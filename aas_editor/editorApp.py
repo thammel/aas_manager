@@ -20,8 +20,8 @@ import aas_editor.widgets as widgets
 import aas_editor.widgets.messsageBoxes
 import aas_editor.widgets.groupBoxes
 from aas_editor.settings.app_settings import *
-from aas_editor.utils.recovery import find_recovery_files, delete_recovery_file, set_recovery_scheduler, \
-    cleanup_recovery_dir
+from aas_editor.utils.recovery import find_recovery_files, delete_recovery_file, register_recovery_scheduler, \
+    unregister_recovery_scheduler, cleanup_recovery_dir
 from aas_editor.utils.exceptionhook import set_crash_callback
 from aas_editor.settings.icons import EXIT_ICON, SETTINGS_ICON, NEW_PACK_ICON
 from aas_editor.settings import APPLICATION_NAME, REPORT_ERROR_LINK
@@ -73,7 +73,7 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         self.statusBar().addPermanentWidget(self._recoveryStatusLabel)
         # Register so edits in detached tab windows (plain TabWidgets that cannot
         # reach this window via self.window()) also schedule the debounced write.
-        set_recovery_scheduler(self.scheduleRecoverySave)
+        register_recovery_scheduler(self.scheduleRecoverySave)
 
         if fileToOpen:
             self.openAASFile(fileToOpen)
@@ -316,6 +316,9 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                 a0.accept()
             else:
                 return a0.ignore()
+        # Reached only when the close is accepted: drop this window's scheduler so a
+        # later edit in another window never fires a callback into a destroyed window.
+        unregister_recovery_scheduler(self.scheduleRecoverySave)
         self.writeSettings()
         self.closed.emit()
 

@@ -2,24 +2,29 @@ import json
 from pathlib import Path
 from typing import Iterable
 
-# Detached tab windows cannot reach the debounce timer via self.window(), so the
+# Detached tab windows cannot reach their debounce timer via self.window(), so each
 # main window registers its scheduler here for edits in any window to trigger it.
-_recovery_scheduler = None
+# A set, not a single slot: more than one EditorApp can be live at once (the Import
+# window subclasses it), and a single slot let the second window clobber the first.
+_recovery_schedulers = set()
 
 
-def set_recovery_scheduler(cb) -> None:
-    global _recovery_scheduler
-    _recovery_scheduler = cb
+def register_recovery_scheduler(cb) -> None:
+    _recovery_schedulers.add(cb)
+
+
+def unregister_recovery_scheduler(cb) -> None:
+    _recovery_schedulers.discard(cb)
 
 
 def schedule_recovery_save() -> None:
-    if _recovery_scheduler is not None:
+    for cb in list(_recovery_schedulers):
         try:
-            _recovery_scheduler()
+            cb()
         except RuntimeError:
-            # Registered window was destroyed; skip until a live one re-registers,
-            # but do not crash the edit that triggered this.
-            pass
+            # Window was destroyed without unregistering; drop it and carry on so the
+            # edit that triggered this never crashes.
+            _recovery_schedulers.discard(cb)
 
 
 def find_recovery_files(recovery_dir: Path) -> dict:
