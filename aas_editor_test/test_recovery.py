@@ -10,9 +10,6 @@ from aas_editor.utils.recovery import (
     find_recovery_files,
     delete_recovery_file,
     cleanup_recovery_dir,
-    register_recovery_scheduler,
-    unregister_recovery_scheduler,
-    schedule_recovery_save,
 )
 
 
@@ -182,38 +179,3 @@ class TestCleanup:
 
     def test_cleanup_missing_dir_is_noop(self, tmp_path: Path) -> None:
         cleanup_recovery_dir(tmp_path / "nope")  # must not raise
-
-
-# ---------------------------------------------------------------------------
-# Scheduler registry
-# ---------------------------------------------------------------------------
-
-class TestSchedulerRegistry:
-    def test_registered_callback_fires(self) -> None:
-        calls = []
-        cb = lambda: calls.append(1)
-        register_recovery_scheduler(cb)
-        try:
-            schedule_recovery_save()
-            assert calls == [1]
-        finally:
-            unregister_recovery_scheduler(cb)
-
-    def test_unregistered_callback_does_not_fire(self) -> None:
-        calls = []
-        cb = lambda: calls.append(1)
-        register_recovery_scheduler(cb)
-        unregister_recovery_scheduler(cb)
-        schedule_recovery_save()
-        assert calls == []
-
-    def test_dead_window_callback_is_dropped(self) -> None:
-        def dead():
-            raise RuntimeError("window destroyed")
-
-        register_recovery_scheduler(dead)
-        try:
-            schedule_recovery_save()  # swallows RuntimeError and discards the callback
-            schedule_recovery_save()
-        finally:
-            unregister_recovery_scheduler(dead)

@@ -20,8 +20,7 @@ import aas_editor.widgets as widgets
 import aas_editor.widgets.messsageBoxes
 import aas_editor.widgets.groupBoxes
 from aas_editor.settings.app_settings import *
-from aas_editor.utils.recovery import find_recovery_files, delete_recovery_file, register_recovery_scheduler, \
-    unregister_recovery_scheduler, cleanup_recovery_dir
+from aas_editor.utils.recovery import find_recovery_files, delete_recovery_file, cleanup_recovery_dir
 from aas_editor.package import Package
 from aas_editor.utils.exceptionhook import set_crash_callback
 from aas_editor.settings.icons import EXIT_ICON, SETTINGS_ICON, NEW_PACK_ICON
@@ -57,18 +56,14 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         set_crash_callback(self._save_recovery_files)
 
         # sys.excepthook misses native crashes (segfaults, OOM kills), which run no
-        # Python and never reach _save_recovery_files. Persist proactively instead:
-        # a debounced write after edits pause, coalescing bursts off the typing path.
+        # Python and never reach _save_recovery_files. Persist periodically instead.
         self._recoveryTimer = QTimer(self)
-        self._recoveryTimer.setSingleShot(True)
-        self._recoveryTimer.setInterval(RECOVERY_DEBOUNCE_MS)
+        self._recoveryTimer.setInterval(RECOVERY_INTERVAL_MS)
         self._recoveryTimer.timeout.connect(self._save_recovery_files)
-        # Tracks whether the last recovery write failed, so the status-bar warning is
-        # shown once on failure and cleared once writing recovers.
+        self._recoveryTimer.start()
+        # Shown once on failure and cleared once writing recovers.
         self._recoveryWriteFailed = False
-        # Last open-file list persisted to settings. The debounced write runs on every
-        # edit pause, but edits never change this list, so we sync it only when it
-        # actually changes (open/close) instead of on every tick.
+        # Synced to settings only when it changes (open/close), not on every tick.
         self._lastPersistedOpenFiles = None
         # Permanent widget, not showMessage(): transient status tips (menu hover)
         # do not overwrite it, so the warning stays until writing recovers.
@@ -76,10 +71,6 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         self._recoveryStatusLabel.setStyleSheet("color: #c0392b;")
         self._recoveryStatusLabel.hide()
         self.statusBar().addPermanentWidget(self._recoveryStatusLabel)
-        # Register so edits in detached tab windows (plain TabWidgets that cannot
-        # reach this window via self.window()) also schedule the debounced write.
-        register_recovery_scheduler(self.scheduleRecoverySave)
-
         if fileToOpen:
             self.openAASFile(fileToOpen)
         else:
@@ -312,8 +303,8 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                 self.mainTreeView.saveAll()
                 a0.accept()
             elif reply == QMessageBox.StandardButton.No:
-                # Discarding: stop the pending write and drop the recovery files so
-                # the next launch does not offer to restore discarded changes.
+                # Discarding: stop recovery writes and drop the recovery files so the
+                # next launch does not offer to restore discarded changes.
                 self._recoveryTimer.stop()
                 for pkg in self.packTreeModel.openedPacks():
                     if pkg.changed:
@@ -321,9 +312,6 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                 a0.accept()
             else:
                 return a0.ignore()
-        # Reached only when the close is accepted: drop this window's scheduler so a
-        # later edit in another window never fires a callback into a destroyed window.
-        unregister_recovery_scheduler(self.scheduleRecoverySave)
         self.writeSettings()
         self.closed.emit()
 
@@ -386,19 +374,11 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
         # stale .meta.json and leftover .tmp writes. Keeps the dir from growing forever.
         cleanup_recovery_dir(RECOVERY_DIR, keptRecoveries)
 
-    def scheduleRecoverySave(self):
-        """(Re)start the debounce so recovery is written once editing pauses.
-
-        Called on every edit; start() restarts the single-shot timer, so a burst
-        of edits collapses into a single write after the user stops.
-        """
-        self._recoveryTimer.start()
-
     def _save_recovery_files(self):
         # Persist open-file list before crash exits — closeEvent won't run. Restore
         # matches recovery files against this list, so it must stay current for a native
-        # crash to offer them. Edits do not change it, so sync only when it changed to
-        # keep the debounced write off the disk on every tick.
+        # crash to offer them. Sync only when it changed to keep it off the disk on
+        # every tick.
         openFiles = self.packTreeModel.openedFiles()
         if openFiles != self._lastPersistedOpenFiles:
             AppSettings.AAS_FILES_TO_OPEN_ON_START.setValue(openFiles)
@@ -413,7 +393,7 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                     pkg.write_recovery(RECOVERY_DIR)
                 except Exception:
                     # Never let a failed recovery write abort the crash handler or the
-                    # debounce, but log it: a silent failure means the user believes they
+                    # timer, but log it: a silent failure means the user believes they
                     # are protected while no recovery is being written (disk full, etc.).
                     writeFailed = True
                     logging.exception("Failed to write recovery file for %s", pkg.file)
@@ -424,7 +404,7 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
 
         Informant only: no dialog, no interruption. Shown once on the transition to
         failure and cleared once writes recover, so a persistently failing write does
-        not spam a message on every debounce tick.
+        not spam a message on every tick.
         """
         if writeFailed and not self._recoveryWriteFailed:
             self._recoveryStatusLabel.setText(
