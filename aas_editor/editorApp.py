@@ -22,6 +22,7 @@ import aas_editor.widgets.groupBoxes
 from aas_editor.settings.app_settings import *
 from aas_editor.utils.recovery import find_recovery_files, delete_recovery_file, register_recovery_scheduler, \
     unregister_recovery_scheduler, cleanup_recovery_dir
+from aas_editor.package import Package
 from aas_editor.utils.exceptionhook import set_crash_callback
 from aas_editor.settings.icons import EXIT_ICON, SETTINGS_ICON, NEW_PACK_ICON
 from aas_editor.settings import APPLICATION_NAME, REPORT_ERROR_LINK
@@ -355,30 +356,25 @@ class EditorApp(QMainWindow, design.Ui_MainWindow):
                 )
                 if reply == QMessageBox.StandardButton.Yes:
                     rec = recovery_map[file_path]
-                    # Kept whether or not the open succeeds: a failed restore below still
+                    # Kept whether or not the restore succeeds: a failed restore still
                     # keeps the recovery data as it may be salvageable by hand.
                     keptRecoveries.append(rec)
-                    pack = self.openAASFile(str(rec))
-                    if pack:
-                        # Remap package to original path so Save targets the real file
-                        pack.file = file_path
-                        # Restored content is unsaved until the user writes it back
-                        pack.changed = True
-                        # Open tabs cache their label/path and miss the remap, so
-                        # refresh them to show the real name, not the recovery stem.
-                        self.mainTabWidget.refreshTabTitles()
-                        self.setWindowModified(True)
-                        # Recovery files are kept until the first successful save,
-                        # so a crash before that save does not lose the restored data
-                    else:
-                        # Restore failed (unreadable file, or user cancelled the dialog).
-                        # Never delete the recovery data here — it may still be salvageable.
+                    try:
+                        pack = Package.restore_from_recovery(rec, file_path)
+                    except Exception:
+                        logging.exception("Failed to restore recovery file %s", rec)
                         QMessageBox.warning(
                             self, "Restore failed",
                             f"The recovery file for {file_path.name} could not be opened.\n\n"
                             f"It was kept at:\n{rec}\n\n"
                             "Opening the last saved version instead.")
                         self.openAASFile(file)
+                    else:
+                        self.mainTreeView.add_pack_to_tree(pack)
+                        self.packTreeModel.setData(QModelIndex(), [], UNDO_ROLE)
+                        # Restored content is unsaved until the user writes it back
+                        pack.changed = True
+                        self.setWindowModified(True)
                 else:
                     delete_recovery_file(recovery_map[file_path])
                     self.openAASFile(file)

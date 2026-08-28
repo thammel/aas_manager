@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from aas_editor import package as package_mod
 from aas_editor.package import Package
 from aas_editor.utils.recovery import (
     find_recovery_files,
@@ -33,34 +34,40 @@ def _write_entry(recovery_dir: Path, name: str, original_path, data: str = "{}")
 # ---------------------------------------------------------------------------
 
 class TestWriteRecovery:
-    def test_writes_data_and_meta(self, qapp: object, json_file: Path, tmp_path: Path) -> None:
+    def test_writes_json_data_and_meta(self, qapp: object, json_file: Path, tmp_path: Path) -> None:
         pkg = Package(json_file)
         rec = pkg.write_recovery(tmp_path)
         meta = tmp_path / f"{rec.stem}.meta.json"
+        assert rec.suffix == ".json"
         assert rec.exists()
-        assert meta.exists()
         assert json.loads(meta.read_text())["original_path"] == json_file.absolute().as_posix()
 
-    def test_recovery_roundtrips(self, qapp: object, json_file: Path, tmp_path: Path) -> None:
-        src = Package(json_file)
+    def test_aasx_recovery_is_json_only(self, qapp: object, aasx_file: Path, tmp_path: Path) -> None:
+        pkg = Package(aasx_file)
+        rec = pkg.write_recovery(tmp_path)
+        assert rec.suffix == ".json"
+        assert not list(tmp_path.glob("*.aasx"))
+
+    def test_recovery_roundtrips(self, qapp: object, aasx_file: Path, tmp_path: Path) -> None:
+        src = Package(aasx_file)
         rec = src.write_recovery(tmp_path)
         reloaded = Package(rec)
         assert reloaded.numOfShells == src.numOfShells
         assert reloaded.numOfSubmodels == src.numOfSubmodels
 
-    def test_original_path_restored_after_write(self, qapp: object, json_file: Path, tmp_path: Path) -> None:
+    def test_original_path_unchanged_after_write(self, qapp: object, json_file: Path, tmp_path: Path) -> None:
         pkg = Package(json_file)
         pkg.write_recovery(tmp_path)
         assert pkg.file == json_file.absolute()
 
-    def test_failed_write_leaves_no_tmp(self, qapp: object, json_file: Path, tmp_path: Path, monkeypatch) -> None:
+    def test_failed_write_leaves_no_tmp_or_meta(self, qapp: object, json_file: Path, tmp_path: Path, monkeypatch) -> None:
         pkg = Package(json_file)
 
-        def boom(file=None):
-            Path(file).write_text("partial")  # a real, half-written temp file
+        def boom(fileIO, store, **kwargs):
+            fileIO.write("partial")  # a real, half-written temp file
             raise RuntimeError("write failed")
 
-        monkeypatch.setattr(pkg, "write", boom)
+        monkeypatch.setattr(package_mod, "write_aas_json_file", boom)
         with pytest.raises(RuntimeError):
             pkg.write_recovery(tmp_path)
         assert not list(tmp_path.glob("*.tmp*"))
@@ -79,6 +86,38 @@ class TestWriteRecovery:
         pkg.file = tmp_path / "saved_as.json"  # Save-As moved the current path
         pkg.delete_recovery(tmp_path, for_file=json_file)
         assert not rec.exists()
+
+
+# ---------------------------------------------------------------------------
+# Package.restore_from_recovery
+# ---------------------------------------------------------------------------
+
+class TestRestoreFromRecovery:
+    def test_restores_objects_and_targets_original(self, qapp: object, json_file: Path, tmp_path: Path) -> None:
+        src = Package(json_file)
+        rec = src.write_recovery(tmp_path)
+        restored = Package.restore_from_recovery(rec, json_file)
+        assert restored.file == json_file.absolute()
+        assert restored.numOfShells == src.numOfShells
+        assert restored.numOfSubmodels == src.numOfSubmodels
+
+    def test_reloads_supplementary_files_from_aasx(self, qapp: object, tmp_path: Path) -> None:
+        original = Path(__file__).parent / "aas_files" / "IDTA 02023 _Template_CarbonFootprint.aasx"
+        src = Package(original)
+        assert len(list(src.fileStore)) > 0  # guard: fixture must carry supplementary files
+        rec = src.write_recovery(tmp_path)
+        restored = Package.restore_from_recovery(rec, original)
+        assert len(list(restored.fileStore)) == len(list(src.fileStore))
+
+    def test_missing_original_warns_and_keeps_objects(self, qapp: object, json_file: Path, tmp_path: Path, caplog) -> None:
+        src = Package(json_file)
+        rec = src.write_recovery(tmp_path)
+        missing = tmp_path / "gone.aasx"
+        with caplog.at_level(logging.WARNING):
+            restored = Package.restore_from_recovery(rec, missing)
+        assert restored.numOfShells == src.numOfShells
+        assert len(list(restored.fileStore)) == 0
+        assert "supplementary files not recovered" in caplog.text
 
 
 # ---------------------------------------------------------------------------

@@ -390,22 +390,6 @@ class TabWithTreeView(QWidget):
                                   triggered=lambda: self.openNextItem(),
                                   enabled=False)
 
-    def refreshPackItemInfo(self):
-        """Re-read the header fields (path line, title, icon) derived from the pack item.
-
-        These are set once in _openItem with no change signal, so call this when the
-        item's name/path changed without reopening (e.g. crash-recovery remap).
-        setWindowTitle/setWindowIcon emit the signals TabWidget.tabInserted wired to
-        setTabText/setTabIcon, so the tab label and icon refresh too.
-        """
-        if not self.packItem.isValid():
-            return  # welcome / empty tab: nothing opened, nothing to refresh
-        self.pathLine.setText(getTreeItemPath(self.packItem))
-        self.setWindowTitle(self.packItem.data(Qt.ItemDataRole.DisplayRole))
-        icon = self.packItem.data(Qt.ItemDataRole.DecorationRole)
-        if icon:
-            self.setWindowIcon(icon)
-
     def windowTitle(self) -> str:
         return self.packItem.data(NAME_ROLE)
 
@@ -651,22 +635,6 @@ class TabWidget(QTabWidget):
         else:
             tabIndex = self.addTab(widget, icon, label)
         return tabIndex
-
-    def refreshTabTitles(self):
-        """Re-sync every open tab's header (label, icon, path line) with its item.
-
-        Call this when an item's name/path changed without the tab reopening — e.g.
-        after crash recovery remaps a package from its recovery file back to the real
-        file path, which changes Package.name and path but emits no signal.
-        """
-        for index in range(self.count()):
-            tab = self.widget(index)
-            # Not every tab is a TabWithTreeView (e.g. plain/placeholder widgets),
-            # so skip any that cannot refresh their pack-derived header. The label and
-            # icon follow via the windowTitleChanged/windowIconChanged signals wired in
-            # tabInserted, so no explicit setTabText/setTabIcon here.
-            if isinstance(tab, TabWithTreeView):
-                tab.refreshPackItemInfo()
 
     def setCurrentTab(self, tabName: str):
         for index in range(self.count()):
