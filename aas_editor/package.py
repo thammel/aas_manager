@@ -11,6 +11,8 @@
 import hashlib
 import io
 import json
+import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Union, Iterable, Optional
@@ -45,6 +47,15 @@ class Package:
     @file.setter
     def file(self, file):
         self._file = Path(file).absolute()
+
+    @property
+    def changed(self) -> bool:
+        """True if the package holds modifications which are not written to its file yet."""
+        return self._changed
+
+    @changed.setter
+    def changed(self, value: bool):
+        self._changed = bool(value)
 
     @property
     def writeJsonInAasx(self):
@@ -110,16 +121,36 @@ class Package:
         return hashlib.sha256(file.as_posix().encode()).hexdigest()[:12]
 
     def recovery_path(self, recovery_dir: Path) -> Path:
-        return recovery_dir / f"{self._recovery_stem()}{self.file.suffix}"
+        return recovery_dir / f"{self._recovery_stem()}.json"
 
     def write_recovery(self, recovery_dir: Path) -> Path:
         recovery_dir.mkdir(parents=True, exist_ok=True)
         original_file = self._file
         stem = self._recovery_stem()
-        rec_path = recovery_dir / f"{stem}{original_file.suffix}"
+        rec_path = recovery_dir / f"{stem}.json"
         meta_path = recovery_dir / f"{stem}.meta.json"
-        self.write(str(rec_path))
-        self._file = original_file  # restore path mutated by write()
+        tmp_path = recovery_dir / f"{stem}.tmp.json"
+
+        # Recovery holds only the object store, always as JSON: this skips the AASX
+        # zip and its supplementary files, keeping periodic writes cheap. Supplementary
+        # file edits are not captured; restore reloads them from the original file.
+        # Temp file first: a write that fails halfway must not replace a complete
+        # recovery file with a truncated one.
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                write_aas_json_file(f, self.objStore)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+        try:
+            os.replace(tmp_path, rec_path)
+        except Exception:
+            # e.g. cross-device or permission error: do not leave the temp write behind
+            tmp_path.unlink(missing_ok=True)
+            raise
+
+        # Meta is written last: find_recovery_files() only offers entries with a
+        # meta file, so an incomplete recovery is never presented for restoring.
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump({
                 "original_path": original_file.as_posix(),
@@ -131,9 +162,27 @@ class Package:
         # for_file lets callers target a previous path (e.g. after Save-As mutated self.file)
         file = self.file if for_file is None else Path(for_file)
         stem = self._recovery_stem(file)
-        for suffix in (file.suffix, ".meta.json"):
+        for suffix in (".json", ".meta.json", ".tmp.json"):
             candidate = recovery_dir / f"{stem}{suffix}"
             candidate.unlink(missing_ok=True)
+
+    @classmethod
+    def restore_from_recovery(cls, recovery_json: Path, original_path: Path) -> "Package":
+        """Build a package from a JSON recovery file, targeting its original file.
+
+        The recovered object store is paired with the supplementary files of the
+        original AASX on disk, so a later save rebuilds the complete AASX. If the
+        original is missing, its supplementary files cannot be recovered.
+        """
+        pack = cls(recovery_json)
+        pack.file = original_path
+        if pack.file.suffix.lower() == ".aasx":
+            if pack.file.exists():
+                reader = AASXReader(pack.file.as_posix())
+                reader.read_into(SetObjectStore(), pack.fileStore)
+            else:
+                logging.warning("Original AASX missing, supplementary files not recovered: %s", pack.file)
+        return pack
 
     def all_submodels_to_aas(self):
         """Add references of all existing submodels to submodel attribute of existing AAS."""

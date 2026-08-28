@@ -613,7 +613,7 @@ class PackTreeView(TreeView):
                 # cancel pressed
                 return
 
-    def openPack(self, file: str) -> typing.Union[bool, Package]:
+    def openPack(self, file: str) -> Optional[Package]:
         try:
             try:
                 pack = Package(file, failsafe=False)
@@ -632,7 +632,7 @@ class PackTreeView(TreeView):
                 if ret == QMessageBox.StandardButton.Yes:
                     pack = Package(file, failsafe=True)
                 else:
-                    return False
+                    return None
             absFile = pack.file.absolute().as_posix()
             self.updateRecentFiles(absFile)
         except Exception as e:
@@ -645,20 +645,29 @@ class PackTreeView(TreeView):
             else:
                 self.add_pack_to_tree(pack)
                 return pack
-        return False
+        return None
 
     def add_pack_to_tree(self, pack: Package):
         self.model().setData(QModelIndex(), pack, ADD_ITEM_ROLE)
+
+    def updateWindowModified(self) -> None:
+        """Derive the shared window modified flag from the per-package changed flags.
+
+        The flag drives the save prompts on close, so it must never be cleared while any
+        opened package still holds unsaved changes.
+        """
+        packs = self.model().data(QModelIndex(), OPENED_PACKS_ROLE)
+        self.setWindowModified(any(pack.changed for pack in packs))
 
     def savePack(self, pack: Package = None, file: str = None) -> bool:
         pack = self.currentIndex().data(PACKAGE_ROLE) if pack is None else pack
         originalFile = pack.file  # write(file) may change pack.file on Save-As
         try:
             pack.write(file)
+            pack.changed = False
             pack.delete_recovery(RECOVERY_DIR, for_file=originalFile)
             self.updateRecentFiles(pack.file.absolute().as_posix())
-            if self.model().rowCount(QModelIndex()) == 1:
-                self.setWindowModified(False)
+            self.updateWindowModified()
             return True
         except (TypeError, ValueError, KeyError) as e:
             widgets.messsageBoxes.ErrorMessageBox.withTraceback(self, f"Package couldn't be saved: {file}: {e}").exec()
@@ -689,9 +698,9 @@ class PackTreeView(TreeView):
                     return
 
     def saveAll(self):
-        saved = [self.savePack(pack) for pack in self.model().data(QModelIndex(), OPENED_PACKS_ROLE)]
-        if all(saved):
-            self.setWindowModified(False)
+        for pack in self.model().data(QModelIndex(), OPENED_PACKS_ROLE):
+            self.savePack(pack)
+        self.updateWindowModified()
 
     def closeFileWithDialog(self):
         pack = self.currentIndex().data(PACKAGE_ROLE)
@@ -704,7 +713,7 @@ class PackTreeView(TreeView):
 
         if packItem.isValid():
             try:
-                if self.isWindowModified():
+                if pack.changed:
                     dialog = QMessageBox(QMessageBox.NoIcon, f"Close {pack}",
                                          f"Do you want to save your changes in {pack} before closing?",
                                          standardButtons=QMessageBox.StandardButton.Save |
@@ -717,11 +726,16 @@ class PackTreeView(TreeView):
                         self.savePack()
                     elif res == QMessageBox.StandardButton.Cancel:
                         return
+                    elif res == QMessageBox.StandardButton.Discard:
+                        # Discarding: drop the recovery file so it is not offered for
+                        # restore next launch. (A failed Save keeps it, as a safety net.)
+                        pack.delete_recovery(RECOVERY_DIR)
                 self.closeFile(packItem)
             except AttributeError as e:
                 QMessageBox.critical(self, "Error", f"No chosen package to close: {e}")
 
     def closeAllFilesWithDialog(self):
+        self.updateWindowModified()
         if self.isWindowModified():
             dialog = QMessageBox(QMessageBox.NoIcon, f"Close all AAS files",
                                  f"Do you want to save your changes before closing? ",
@@ -736,6 +750,12 @@ class PackTreeView(TreeView):
                     self.savePack(pack)
             elif res == QMessageBox.StandardButton.Cancel:
                 return
+            elif res == QMessageBox.StandardButton.Discard:
+                # Explicitly discarding all: drop recovery files for unsaved packages
+                # so they are not offered for restore on next launch.
+                for pack in self.model().data(QModelIndex(), OPENED_PACKS_ROLE):
+                    if pack.changed:
+                        pack.delete_recovery(RECOVERY_DIR)
         self.closeAllFiles()
 
     def closeAllFiles(self):
@@ -745,10 +765,21 @@ class PackTreeView(TreeView):
 
     def closeFile(self, packItem: QModelIndex):
         self.model().setData(packItem, NOT_GIVEN, CLEAR_ROW_ROLE)
-        if self.model().data(QModelIndex(), OPENED_PACKS_ROLE):
-            self.setWindowModified(False)
+        self.updateWindowModified()
+
+    @staticmethod
+    def isRecoveryFile(file) -> bool:
+        """Recovery files are internal auto-saves and must never reach the recent files list."""
+        try:
+            # resolve() (not absolute()) so symlinks and '..' segments normalise; an
+            # unresolved path could slip a recovery file past this check into recents.
+            return Path(file).resolve().parent == RECOVERY_DIR.resolve()
+        except (TypeError, ValueError, OSError):
+            return False
 
     def updateRecentFiles(self, file: str):
+        if self.isRecoveryFile(file):
+            return
         self.removeFromRecentFiles(file)
         settings = QSettings(IAT, APPLICATION_NAME)
         files = settings.value('recentFiles', [])
