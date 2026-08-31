@@ -714,7 +714,7 @@ class PackTreeView(TreeView):
         if packItem.isValid():
             try:
                 if pack.changed:
-                    dialog = QMessageBox(QMessageBox.NoIcon, f"Close {pack}",
+                    dialog = QMessageBox(QMessageBox.Icon.NoIcon, f"Close {pack}",
                                          f"Do you want to save your changes in {pack} before closing?",
                                          standardButtons=QMessageBox.StandardButton.Save |
                                                          QMessageBox.StandardButton.Cancel |
@@ -737,7 +737,7 @@ class PackTreeView(TreeView):
     def closeAllFilesWithDialog(self):
         self.updateWindowModified()
         if self.isWindowModified():
-            dialog = QMessageBox(QMessageBox.NoIcon, f"Close all AAS files",
+            dialog = QMessageBox(QMessageBox.Icon.NoIcon, f"Close all AAS files",
                                  f"Do you want to save your changes before closing? ",
                                  standardButtons=QMessageBox.StandardButton.Save |
                                                  QMessageBox.StandardButton.Cancel |
